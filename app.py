@@ -11,16 +11,16 @@ st.write("Google kısıtlamalarından bağımsız, tarayıcı tabanlı değerlen
 
 # 1. Google Sheets'ten Sadece Aktif Öğrencileri Okuyoruz
 try:
-    RAW_SHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
+    # Secrets alanındaki linki doğrudan alıyoruz
+    spreadsheet_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
     
-    # URL içinden sadece Tablo ID'sini güvenli bir şekilde cımbızla çekiyoruz
-    if "/d/" in RAW_SHEET_URL:
-        sheet_id = RAW_SHEET_URL.split("/d/")[1].split("/")[0]
+    # Linkin sonundaki /edit kısmını temizleyip doğrudan CSV indirme formatına çeviriyoruz
+    if "/edit" in spreadsheet_url:
+        base_url = spreadsheet_url.split("/edit")[0]
     else:
-        sheet_id = RAW_SHEET_URL
+        base_url = spreadsheet_url
         
-    # Doğru ve standart Google CSV indirme link yapısı
-    url_ogrenciler = f"https://google.com{sheet_id}/export?format=csv&sheet=Aktif_Ogrenciler"
+    url_ogrenciler = f"{base_url}/export?format=csv&sheet=Aktif_Ogrenciler"
     df_ogrenciler = pd.read_csv(url_ogrenciler)
 except Exception as e:
     st.error(f"Öğrenci listesi okunamadı. Lütfen Secrets alanındaki linki kontrol edin. Hata: {e}")
@@ -82,7 +82,7 @@ k_col1, k_col2 = st.columns(2)
 for idx, kriter in enumerate(kriterler, 1):
     hedef_sutun = k_col1 if idx <= 10 else k_col2
     with hedef_sutun:
-        puanlar[f"K{idx}"] = st.radio(f"**{idx}.** {kriter}", options=[5, 4, 3, 2, 1], index=2, key=f"kr_{idx}")
+        puanlar[f"K{idx}"] = st.radio(f"**{idx}.** {kriter}", options=[1, 2, 3, 4, 5], index=2, key=f"kr_{idx}")
 
 st.divider()
 
@@ -124,4 +124,3 @@ if st.session_state.gecmis_notlar:
     )
 else:
     st.info("Henüz bu oturumda listeye eklenmiş bir değerlendirme yok. Yukarıdaki formdan öğrencileri eklemeye başlayabilirsiniz.")
-
