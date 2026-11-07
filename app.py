@@ -9,18 +9,21 @@ st.set_page_config(page_title="Öğrenci Değerlendirme Sistemi", layout="wide")
 st.title("🎨 Öğrenci Değerlendirme ve Takip Formu")
 st.write("Google kısıtlamalarından bağımsız, tarayıcı tabanlı değerlendirme ve Excel raporlama sistemi.")
 
-# 1. Google Sheets'ten Sadece Aktif Öğrencileri Okuyoruz (Bu izin açık)
+# 1. Google Sheets'ten Sadece Aktif Öğrencileri Okuyoruz
 try:
     RAW_SHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
+    
+    # URL içinden sadece Tablo ID'sini güvenli bir şekilde cımbızla çekiyoruz
     if "/d/" in RAW_SHEET_URL:
-        sheet_id = RAW_SHEET_URL.split("/d/").split("/")
+        sheet_id = RAW_SHEET_URL.split("/d/")[1].split("/")[0]
     else:
         sheet_id = RAW_SHEET_URL
         
-    url_ogrenciler = f"https://google.com{sheet_id}/gviz/tq?tqx=out:csv&sheet=Aktif_Ogrenciler"
+    # Doğru ve standart Google CSV indirme link yapısı
+    url_ogrenciler = f"https://google.com{sheet_id}/export?format=csv&sheet=Aktif_Ogrenciler"
     df_ogrenciler = pd.read_csv(url_ogrenciler)
 except Exception as e:
-    st.error(f"Öğrenci listesi okunamadı: {e}")
+    st.error(f"Öğrenci listesi okunamadı. Lütfen Secrets alanındaki linki kontrol edin. Hata: {e}")
     st.stop()
 
 if df_ogrenciler.empty or "ADI SOYADI" not in df_ogrenciler.columns:
@@ -79,7 +82,7 @@ k_col1, k_col2 = st.columns(2)
 for idx, kriter in enumerate(kriterler, 1):
     hedef_sutun = k_col1 if idx <= 10 else k_col2
     with hedef_sutun:
-        puanlar[f"K{idx}"] = st.radio(f"**{idx}.** {kriter}", options=[1, 2, 3, 4, 5], index=2, key=f"kr_{idx}")
+        puanlar[f"K{idx}"] = st.radio(f"**{idx}.** {kriter}", options=[5, 4, 3, 2, 1], index=2, key=f"kr_{idx}")
 
 st.divider()
 
@@ -97,7 +100,7 @@ if st.button("➕ DEĞERLENDİRMEYİ LİSTEYE EKLE", type="primary"):
         "ACIKLAMA_EYLEM_PLANI": eylem_plani
     }
     st.session_state.gecmis_notlar.append(yeni_kayit)
-    st.success(f"🎉 {ogrenci_adi} listeye eklendi! Sayfayı kapatmadan aşağıdaki butondan Excel olarak indirmeyi unutmayın.")
+    st.success(f"🎉 {ogrenci_adi} başarıyla geçici listeye eklendi! Sayfayı kapatmadan veya yenilemeden önce en alttaki butondan Excel dosyanızı indirmeyi unutmayın.")
 
 st.divider()
 
@@ -120,5 +123,5 @@ if st.session_state.gecmis_notlar:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 else:
-    st.info("Henüz bu oturumda listeye eklenmiş bir değerlendirme yok. Yukarıdaki butondan ekleme yapın.")
+    st.info("Henüz bu oturumda listeye eklenmiş bir değerlendirme yok. Yukarıdaki formdan öğrencileri eklemeye başlayabilirsiniz.")
 
