@@ -1,45 +1,37 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import io
 
-# Sayfa Genişlik Ayarı
+# Sayfa Ayarları
 st.set_page_config(page_title="Öğrenci Değerlendirme Sistemi", layout="wide")
 
 st.title("🎨 Öğrenci Değerlendirme ve Takip Formu")
-st.write("Google Sheets tabanlı doğrudan veri okuma ve değerlendirme arayüzü.")
+st.write("Google kısıtlamalarından bağımsız, tarayıcı tabanlı değerlendirme ve Excel raporlama sistemi.")
 
-# CRITICAL CONFIGURATION: Secrets alanından linki çek
+# 1. Google Sheets'ten Sadece Aktif Öğrencileri Okuyoruz (Bu izin açık)
 try:
-    # Kullanıcının secrets alanına yazdığı linki al
     RAW_SHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
-    
-    # ID'yi ayıkla ve doğrudan CSV indirme linkine dönüştür
     if "/d/" in RAW_SHEET_URL:
-        sheet_id = RAW_SHEET_URL.split("/d/")[1].split("/")[0]
+        sheet_id = RAW_SHEET_URL.split("/d/").split("/")
     else:
         sheet_id = RAW_SHEET_URL
         
-    # Her iki sekmeyi de doğrudan Google'ın ham export URL'sinden hatasız oku
-    url_ogrenciler = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=Aktif_Ogrenciler"
-    url_gecmis = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=Degerlendirmeler"
-    
+    url_ogrenciler = f"https://google.com{sheet_id}/gviz/tq?tqx=out:csv&sheet=Aktif_Ogrenciler"
     df_ogrenciler = pd.read_csv(url_ogrenciler)
-    try:
-        df_gecmis = pd.read_csv(url_gecmis)
-    except:
-        df_gecmis = pd.DataFrame() # Eğer tablo henüz tamamen boşsa hata verme
-        
 except Exception as e:
-    st.error(f"Bağlantı parametreleri çözümlenemedi: {e}")
-    st.info("Lütfen Advanced Settings -> Secrets alanında 'spreadsheet' linkinin doğru tanımlandığından emin olun.")
+    st.error(f"Öğrenci listesi okunamadı: {e}")
     st.stop()
 
-# Güvenlik Kontrolü: Sütun isimleri kontrolü
 if df_ogrenciler.empty or "ADI SOYADI" not in df_ogrenciler.columns:
-    st.warning("⚠️ Google Sheets 'Aktif_Ogrenciler' sekmesinde veri bulunamadı veya başlıklar hatalı. İlk satır mutlaka büyük harflerle 'ADI SOYADI', 'NUMARASI', 'SEVIYE/SINIF' olmalıdır.")
+    st.warning("⚠️ 'Aktif_Ogrenciler' sekmesinde veri bulunamadı veya başlıklar hatalı.")
     st.stop()
 
-# 2. Üst Panel: Öğrenci Seçimi ve Genel Bilgiler
+# 2. Oturum Hafızası (Girdiğiniz notların tarayıcıda birikmesi için)
+if "gecmis_notlar" not in st.session_state:
+    st.session_state.gecmis_notlar = []
+
+# 3. Üst Panel: Öğrenci Seçimi
 st.markdown("### 📋 1. Öğrenci ve Dönem Bilgisi")
 col1, col2, col3 = st.columns(3)
 
@@ -64,7 +56,7 @@ with col3:
 
 st.divider()
 
-# 3. Kriterler Panel
+# 4. Kriterler Paneli
 st.markdown("### 📊 2. Kriter Değerlendirmesi")
 st.caption("5: Fazlasıyla | 4: Sıklıkla | 3: Değişken/Bazen | 2: Nadiren | 1: Hiçbir Zaman")
 
@@ -87,31 +79,46 @@ k_col1, k_col2 = st.columns(2)
 for idx, kriter in enumerate(kriterler, 1):
     hedef_sutun = k_col1 if idx <= 10 else k_col2
     with hedef_sutun:
-        puanlar[f"K{idx}"] = st.radio(f"**{idx}.** {kriter}", options=[5, 4, 3, 2, 1], index=2, key=f"kr_{idx}")
+        puanlar[f"K{idx}"] = st.radio(f"**{idx}.** {kriter}", options=[1, 2, 3, 4, 5], index=2, key=f"kr_{idx}")
 
 st.divider()
 
-# 4. Açıklamalar ve Kayıt Formu Mantığı
+# 5. Açıklamalar ve Listeye Ekleme
 st.markdown("### ✍️ 3. Açıklamalar ve Eylem Planı")
 eylem_plani = st.text_area("Öğrenciyle ilgili açıklamalar ve eylem planları:", height=120)
 
-# Not: Web tarayıcısı üzerinden doğrudan kaydetme için Google Apps Script entegrasyonu aşamasına geçmeden önce ekranın gelmesini doğrulayalım.
-if st.button("💾 VERİLERİ HESAPLA VE EKRANDA GÖSTER", type="primary"):
-    st.success("Veri yapısı hazırlandı! Google Sheets API kısıtlamasını aşmak için form ekranınız başarıyla bağlandı.")
-    st.json({
-        "YIL": degerlendirme_yili, "OGRENCI": ogrenci_adi, "NO": str(ogrenci_no), "SINIF": secilen_sinif,
-        "PUANLAR": puanlar, "NOT": eylem_plani
-    })
+if st.button("➕ DEĞERLENDİRMEYİ LİSTEYE EKLE", type="primary"):
+    yeni_kayit = {
+        "TARIH_YIL": degerlendirme_yili,
+        "ADI_SOYADI": ogrenci_adi,
+        "NUMARASI": ogrenci_no,
+        "SEVIYE_SINIF": secilen_sinif,
+        **puanlar,
+        "ACIKLAMA_EYLEM_PLANI": eylem_plani
+    }
+    st.session_state.gecmis_notlar.append(yeni_kayit)
+    st.success(f"🎉 {ogrenci_adi} listeye eklendi! Sayfayı kapatmadan aşağıdaki butondan Excel olarak indirmeyi unutmayın.")
 
 st.divider()
 
-# 5. Geçmiş Listeleme
-st.markdown(f"### 🕒 {ogrenci_adi} - Geçmiş Yıl Değerlendirmeleri")
-if not df_gecmis.empty and "NUMARASI" in df_gecmis.columns:
-    ogrenci_gecmis = df_gecmis[df_gecmis["NUMARASI"].astype(str) == str(ogrenci_no)]
-    if not ogrenci_gecmis.empty:
-        st.dataframe(ogrenci_gecmis[["TARIH_YIL", "SEVIYE_SINIF", "ACIKLAMA_EYLEM_PLANI"]], use_container_width=True, hide_index=True)
-    else:
-        st.info("Bu öğrenciye ait geçmiş kayıt bulunamadı.")
+# 6. Mevcut Eklenenleri Gösterme ve Excel İndirme Paneli
+st.markdown("### 📥 4. Eklenen Değerlendirmeler ve Excel Çıktısı Al")
+
+if st.session_state.gecmis_notlar:
+    df_rapor = pd.DataFrame(st.session_state.gecmis_notlar)
+    st.dataframe(df_rapor[["TARIH_YIL", "ADI_SOYADI", "NUMARASI", "SEVIYE_SINIF", "ACIKLAMA_EYLEM_PLANI"]], use_container_width=True)
+    
+    # Excel'e Dönüştürme Bellek Ayarı
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        df_rapor.to_excel(writer, index=False, sheet_name='Degerlendirmeler')
+    
+    st.download_button(
+        label="📥 TÜM LİSTEYİ EXCEL OLARAK BİLGİSAYARA İNDİR",
+        data=buffer.getvalue(),
+        file_name=f"Ogrenci_Degerlendirme_Raporu_{guncel_yil}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 else:
-    st.info("Henüz sistemde hiç geçmiş veri kaydı yok.")
+    st.info("Henüz bu oturumda listeye eklenmiş bir değerlendirme yok. Yukarıdaki butondan ekleme yapın.")
+
